@@ -2207,6 +2207,29 @@ func TestKeyDelimiter(t *testing.T) {
 	assert.Equal(t, expected, actual)
 }
 
+func TestReadInStream(t *testing.T) {
+	// given a `config.yaml` file
+	v, configFile, cleanup := newViperWithConfigFile(t)
+	defer cleanup()
+	_, err := os.Stat(configFile)
+	require.NoError(t, err)
+	t.Logf("test config file: %s\n", configFile)
+	fileContent, err := ioutil.ReadFile(configFile)
+	require.NoError(t, err)
+
+	r, err := v.ReadInStream(true)
+	require.NoError(t, err)
+	b, err := ioutil.ReadAll(r)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(fileContent, b), "not expected")
+
+	r, err = v.ReadInStream(false)
+	require.NoError(t, err)
+	b, err = ioutil.ReadAll(r)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(fileContent, b), "not expected")
+}
+
 func BenchmarkGetBool(b *testing.B) {
 	key := "BenchmarkGetBool"
 	v = New()

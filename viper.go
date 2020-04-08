@@ -1298,31 +1298,42 @@ func (v *Viper) Set(key string, value interface{}) {
 // and key/value stores, searching in one of the defined paths.
 func ReadInConfig() error { return v.ReadInConfig() }
 func (v *Viper) ReadInConfig() error {
-	jww.INFO.Println("Attempting to read in config file")
-	filename, err := v.getConfigFile()
-	if err != nil {
-		return err
-	}
-
-	if !stringInSlice(v.getConfigType(), SupportedExts) {
-		return UnsupportedConfigError(v.getConfigType())
-	}
-
-	jww.DEBUG.Println("Reading file: ", filename)
-	file, err := afero.ReadFile(v.fs, filename)
+	r, err := v.ReadInStream(true)
 	if err != nil {
 		return err
 	}
 
 	config := make(map[string]interface{})
 
-	err = v.unmarshalReader(bytes.NewReader(file), config)
+	err = v.unmarshalReader(r, config)
 	if err != nil {
 		return err
 	}
 
 	v.config = config
 	return nil
+}
+
+// ReadInStream will discover and read the configuration file from disk
+// then return the file bytes stream without doing any parsing.
+func ReadInStream(checkExt bool) (io.Reader, error) { return v.ReadInStream(checkExt) }
+func (v *Viper) ReadInStream(checkExt bool) (io.Reader, error) {
+	jww.INFO.Println("Attempting to read in config file")
+	filename, err := v.getConfigFile()
+	if err != nil {
+		return nil, err
+	}
+
+	if checkExt && !stringInSlice(v.getConfigType(), SupportedExts) {
+		return nil, UnsupportedConfigError(v.getConfigType())
+	}
+
+	jww.DEBUG.Println("Reading file: ", filename)
+	file, err := afero.ReadFile(v.fs, filename)
+	if err != nil {
+		return nil, err
+	}
+	return bytes.NewReader(file), nil
 }
 
 // MergeInConfig merges a new configuration with an existing config.
@@ -1764,6 +1775,29 @@ func (v *Viper) getRemoteConfig(provider RemoteProvider) (map[string]interface{}
 	}
 	err = v.unmarshalReader(reader, v.kvstore)
 	return v.kvstore, err
+}
+
+// ReadRemoteStream attempts to get configuration from a remote source
+// and read stream from the remote configuration registry.
+// Then return the stream without any parsing.
+func ReadRemoteStream() (io.Reader, error) { return v.ReadRemoteStream() }
+func (v *Viper) ReadRemoteStream() (io.Reader, error) {
+	return v.readConfigStream()
+}
+
+func (v *Viper) readConfigStream() (io.Reader, error) {
+	if RemoteConfig == nil {
+		return nil, RemoteConfigError("Enable the remote features by doing a blank import of the viper/remote package: '_ github.com/spf13/viper/remote'")
+	}
+
+	for _, rp := range v.remoteProviders {
+		reader, err := RemoteConfig.Get(rp)
+		if err != nil {
+			continue
+		}
+		return reader, nil
+	}
+	return nil, RemoteConfigError("No Files Found")
 }
 
 // Retrieve the first found remote configuration.
